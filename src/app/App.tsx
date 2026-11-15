@@ -1,4 +1,5 @@
 import { useEffect } from 'react'
+import { autoBackup } from '../services/chat/backup.js'
 import { useTranslate } from '../i18n/index.js'
 import { useSettings } from '../services/settings.js'
 import { useIsMobile, useMobileViewport, usePreventPageScroll } from './viewport.js'
@@ -68,7 +69,10 @@ export const App = () => {
   useEffect(closeMobileSider, [activeId, isMobile])
 
   useEffect(() => {
-    void initChat()
+    void initChat().then(() => {
+      // 每天首次打开留一份 ZIP 备份到「下载」，防 IndexedDB 被系统清理
+      void autoBackup()
+    })
     // 首次打开先在设置里输入 API Key
     ensureApiKey()
   }, [])

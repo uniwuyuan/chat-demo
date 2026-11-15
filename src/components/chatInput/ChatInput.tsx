@@ -29,6 +29,7 @@ import { showToast } from '../base/toastState.js'
 import { ACCEPT, useUploads } from '../../services/attachments.js'
 import { DraftAttachments } from './DraftAttachments.js'
 import { useVoiceInput } from './useVoiceInput.js'
+import { filterCommands, matchCommandQuery, parseCommand } from '../../services/commands/index.js'
 import { VoiceButton } from './VoiceButton.js'
 import { Spectrum } from './Spectrum.js'
 import { useTranslate } from '../../i18n/index.js'
@@ -132,7 +133,29 @@ const Input = ({ sessionId }: { sessionId: string | null }) => {
   // 排队、上传中或上传失败的附件都留在输入框，全部上传成功后才能发送
   const canSend = !importingHistory && !streaming && voice.status === 'idle' && draftReady
 
+  // 斜杠命令：命中已注册命令时执行，不进消息流
+  const commandQuery = matchCommandQuery(text)
+  const commandList = commandQuery === null ? [] : filterCommands(commandQuery)
+  const showCommands = commandList.length > 0 && !recording
+
+  const runCommand = (name: string, args: string) => {
+    const command = commandList.find((item) => item.name === name) ?? undefined
+    if (!command) {
+      return
+    }
+    setText('')
+    void command.run({ sessionId, args })
+    textareaRef.current?.focus({ preventScroll: true })
+  }
+
   const send = () => {
+    // 「/ 内容」「／compact」「/usr/bin」都走正常发送，只有已注册命令会被拦下
+    const parsed = parseCommand(text)
+    if (parsed) {
+      setText('')
+      void parsed.command.run({ sessionId, args: parsed.args })
+      return
+    }
     if (
       useChatStore.getState().importingHistory ||
       voice.status !== 'idle' ||
@@ -161,6 +184,24 @@ const Input = ({ sessionId }: { sessionId: string | null }) => {
         }
       }}
     >
+      {showCommands ? (
+        <div className={styles.commands} role="listbox" aria-label={t('commandHelpLabel')}>
+          {commandList.map((command) => (
+            <button
+              key={command.name}
+              type="button"
+              role="option"
+              aria-selected={false}
+              className={styles.commandItem}
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={() => runCommand(command.name, '')}
+            >
+              <span className={styles.commandName}>{`/${command.name}`}</span>
+              <span className={styles.commandHint}>{t(command.hint)}</span>
+            </button>
+          ))}
+        </div>
+      ) : null}
       <DraftAttachments items={attachments} onRetry={retryFile} onRemove={removeFile} />
       <div className={styles.textareaWrapper}>
         <textarea

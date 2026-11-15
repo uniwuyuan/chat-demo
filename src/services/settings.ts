@@ -17,6 +17,10 @@ type Settings = {
   thinking: boolean
   search: boolean
   siderCollapsed: boolean
+  /** 调试日志：默认开启，关掉后不再记录 */
+  debugLog: boolean
+  /** 自动备份：每天首次打开时把全部会话导出成 ZIP */
+  autoBackup: boolean
 }
 
 const KEYS = {
@@ -28,6 +32,8 @@ const KEYS = {
   thinking: 'chat-demo:thinking',
   search: 'chat-demo:search',
   siderCollapsed: 'chat-demo:sider-collapsed',
+  debugLog: 'chat-demo:debug-log',
+  autoBackup: 'chat-demo:auto-backup',
 } as const
 
 const read = (key: string) => {
@@ -96,6 +102,9 @@ export const useSettings = create<Settings>(() => ({
   thinking: read(KEYS.thinking) === 'true',
   search: read(KEYS.search) === 'true',
   siderCollapsed: read(KEYS.siderCollapsed) === 'true',
+  // 只有显式存过 'false' 才算关闭
+  debugLog: read(KEYS.debugLog) !== 'false',
+  autoBackup: read(KEYS.autoBackup) !== 'false',
 }))
 
 export const setLocale = (locale: Locale) => {
@@ -137,4 +146,14 @@ export const setSearch = (search: boolean) => {
 export const setSiderCollapsed = (siderCollapsed: boolean) => {
   write(KEYS.siderCollapsed, String(siderCollapsed))
   useSettings.setState({ siderCollapsed })
+}
+
+export const setDebugLog = (debugLog: boolean) => {
+  write(KEYS.debugLog, String(debugLog))
+  useSettings.setState({ debugLog })
+}
+
+export const setAutoBackup = (autoBackup: boolean) => {
+  write(KEYS.autoBackup, String(autoBackup))
+  useSettings.setState({ autoBackup })
 }

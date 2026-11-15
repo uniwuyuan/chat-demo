@@ -6,6 +6,9 @@ import { extractFileIds, getFileErrorCode, isRetryableApiError } from '../api/er
 import { cancelUpload, describeUploadError, uploadAttachment, useUploads } from '../attachments.js'
 import { useSettings } from '../settings.js'
 import { appendBranch, getVisibleMessages, normalizeSession, selectVersion } from './branches.js'
+import { logInfo } from '../debug/log.js'
+import { recordUsage } from '../usage.js'
+import { splitRequestParts } from '../contextUsage.js'
 import * as db from './db.js'
 import {
   clearAllDrafts,
@@ -299,9 +302,20 @@ export const initChat = (): Promise<void> => {
   set({ initError: false })
   initTask = (async () => {
     try {
-      const summaries = await db.loadSessionSummaries()
+      let summaries = await db.loadSessionSummaries()
+      if (summaries.length === 0) {
+        // 列表索引丢了但正文还在时自愈：用 sessions 存储重建索引
+        const info = await db.inspectStorage()
+        logInfo('session', '本地会话索引为空', info)
+        if (info.sessions > 0) {
+          const rebuilt = await db.rebuildSummaries()
+          logInfo('session', '已重建会话索引', { sessions: rebuilt })
+          summaries = await db.loadSessionSummaries()
+        }
+      }
       if (epoch === historyEpoch) {
         set({ ready: true, sessions: sortSessions(summaries) })
+        logInfo('session', '会话列表已载入', { count: summaries.length })
       }
     } catch (error) {
       if (epoch === historyEpoch) {
@@ -332,7 +346,14 @@ const ensureSessionLoaded = (id: string): Promise<void> => {
   sessionLoads.set(id, load)
   load.promise = (async () => {
     try {
+      const started = Date.now()
+      logInfo('session', '开始从本地读取会话', { id })
       const stored = await db.loadSession(id)
+      logInfo('session', '会话读取完成', {
+        id,
+        ms: Date.now() - started,
+        messages: stored?.messages.length ?? 0,
+      })
       if (epoch !== historyEpoch || sessionLoads.get(id) !== load) {
         return
       }
@@ -343,7 +364,9 @@ const ensureSessionLoaded = (id: string): Promise<void> => {
       if (!stored) {
         throw new Error(`Session ${id} is missing from local storage`)
       }
-      const settled = settleInterrupted(normalizeSession(stored))
+      const normalized = normalizeSession(stored)
+      logInfo('session', '已规范化消息树', { id, messages: normalized.messages.length })
+      const settled = settleInterrupted(normalized)
       // 读取期间可能已在列表重命名，保留最新元数据，不能让旧读取覆盖它。
       const session = sameSummary(settled, summary) ? settled : { ...settled, ...summary }
       touchSession(id)
@@ -996,6 +1019,16 @@ const streamReply = async (sessionId: string, initial: AssistantMessage, request
           initial.thinking ?? false,
           latestReminder
         )
+        // 记录本轮实际送入的上下文规模，便于对账用量
+        const payload = JSON.stringify(messages)
+        logInfo('request', '本轮请求上下文', {
+          messages: messages.length,
+          chars: payload.length,
+          tokensEstimate: Math.ceil(payload.length / 2),
+          images: (payload.match(/"type":"image"/g) ?? []).length,
+        })
+        const requestStartedAt = Date.now()
+        const parts = splitRequestParts(messages, JSON.stringify(serverTools(initial.search ?? false)).length)
         const events = streamMessage(
           useSettings.getState().apiKey ?? '',
           {
@@ -1010,8 +1043,28 @@ const streamReply = async (sessionId: string, initial: AssistantMessage, request
           controller.signal
         )
         const blockIndexes = new Map<number, number>()
+        // usage 在一轮里可能随多个 message_delta 重复到达，只记最后一份
+        let usageRecorded = false
         for await (const event of events) {
           receivedContent ||= event.type === 'content_block_start'
+          if (event.type === 'message_delta' && event.usage) {
+            const usage = {
+              input: event.usage.input_tokens,
+              cacheRead: event.usage.cache_read_input_tokens,
+              cacheWrite: event.usage.cache_creation_input_tokens,
+              output: event.usage.output_tokens,
+            }
+            logInfo('request', '本轮用量', usage)
+            recordUsage({
+              at: Date.now(),
+              model: initial.model ?? MODEL,
+              sessionId,
+              ms: Date.now() - requestStartedAt,
+              parts,
+              ...usage,
+            })
+            usageRecorded = true
+          }
           if (
             event.type === 'message_delta' &&
             (event.delta.stop_reason === 'end_turn' || event.delta.stop_reason === 'max_tokens') &&
@@ -1030,6 +1083,9 @@ const streamReply = async (sessionId: string, initial: AssistantMessage, request
           } else {
             frame ||= requestAnimationFrame(flush)
           }
+        }
+        if (!usageRecorded) {
+          logInfo('request', '本轮没有用量数据')
         }
         reply = settleReply(reply, 'done', Date.now())
         break
@@ -1091,4 +1147,86 @@ const streamReply = async (sessionId: string, initial: AssistantMessage, request
     }))
     persist(sessionId)
   }
+}
+
+/** 供命令层读取当前可见（选中分支）的消息；外部只读，不直接改 store。 */
+export const getVisibleSnapshot = (sessionId: string): Session | null => {
+  const session = getSession(sessionId)
+  return session ? { ...session, messages: getVisibleMessages(session) } : null
+}
+
+/** 压缩后代替旧历史的摘要占位：必须写成「用户提问 + 助手摘要」一对，
+ *  单独的 assistant 消息既进不了上下文（上下文按提问/回答成对取），也破坏角色交替。 */
+const COMPACTION_MARKER = '〔前文摘要｜Compacted context〕'
+
+/**
+ * /compact 的落盘动作：用一条摘要替换较早的历史，保留尾部原文。
+ * rootMessageId 必须回到 undefined（线性列表），写成 null 会被当成空会话，整段历史看不见。
+ */
+export const applyCompaction = (
+  sessionId: string,
+  summary: string,
+  retained: Message[]
+): boolean => {
+  if (!get().ready || deletingSessions.has(sessionId) || getStreamController(sessionId)) {
+    return false
+  }
+  if (!getSession(sessionId)) {
+    return false
+  }
+  const now = Date.now()
+  const marker: UserMessage = {
+    id: createId(),
+    role: 'user',
+    content: COMPACTION_MARKER,
+    files: [],
+    createdAt: now,
+  }
+  const summaryReply: AssistantMessage = {
+    ...createReply(),
+    status: 'done',
+    prefix: false,
+    blocks: [{ type: 'text', text: summary }],
+  }
+  const messages: Message[] = [
+    marker,
+    summaryReply,
+    ...retained.map((message) => ({
+      ...message,
+      parentId: undefined,
+      selectedChildId: undefined,
+    })),
+  ]
+  updateSession(sessionId, (session) => ({
+    ...session,
+    messages,
+    rootMessageId: undefined,
+    updatedAt: now,
+  }))
+  persist(sessionId)
+  logInfo('compact', '压缩完成', {
+    sessionId,
+    summaryChars: summary.length,
+    kept: retained.length,
+  })
+  return true
+}
+
+/** 手动重试读取本地会话；索引缺失时顺带重建，返回自检结果 */
+export const reloadSessions = async (): Promise<{
+  sessions: number
+  summaries: number
+  files: number
+  staging: number
+  rebuilt: boolean
+}> => {
+  const before = await db.inspectStorage()
+  let rebuilt = false
+  if (before.sessions > 0 && before.summaries === 0) {
+    await db.rebuildSummaries()
+    rebuilt = true
+  }
+  const summaries = await db.loadSessionSummaries()
+  set({ ready: true, initError: false, sessions: sortSessions(summaries) })
+  return { ...(await db.inspectStorage()), rebuilt }
 }

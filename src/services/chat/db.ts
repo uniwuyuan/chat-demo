@@ -249,3 +249,34 @@ export const reportStorageError = (action: string) => (error: unknown) => {
   // eslint-disable-next-line no-console
   console.error(`[storage] ${action} failed`, error)
 }
+
+/** 存储自检：各存储的条目数，用来判断「数据还在但列表丢了」这类情况 */
+export const inspectStorage = async (): Promise<{
+  sessions: number
+  summaries: number
+  files: number
+  staging: number
+}> => {
+  const db = await getDB()
+  const [sessions, summaries, files, staging] = await Promise.all([
+    db.count('sessions'),
+    db.count('sessionSummaries'),
+    db.count('files'),
+    db.count('sessionsStaging'),
+  ])
+  return { sessions, summaries, files, staging }
+}
+
+/** 用 sessions 存储重建 sessionSummaries：列表索引丢了、正文还在时靠它恢复 */
+export const rebuildSummaries = async (): Promise<number> => {
+  const db = await getDB()
+  const all = await db.getAll('sessions')
+  const tx = db.transaction('sessionSummaries', 'readwrite')
+  const store = tx.objectStore('sessionSummaries')
+  await store.clear()
+  for (const session of all) {
+    await store.put(storedSummary(session))
+  }
+  await tx.done
+  return all.length
+}

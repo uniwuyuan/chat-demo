@@ -6,6 +6,8 @@ import {
   type MessageVersions,
 } from '../../services/chat/branches.js'
 import { selectMessageVersion } from '../../services/chat/store.js'
+import { useTranslate } from '../../i18n/index.js'
+import { logInfo } from '../../services/debug/log.js'
 import type { Session } from '../../services/chat/types.js'
 import { closeSearchPanel } from '../search/searchPanelState.js'
 import { AssistantMessage } from './AssistantMessage.js'
@@ -31,6 +33,8 @@ import styles from './MessageList.module.css'
 
 /** 距底部小于该值时视为在底部，流式内容增长时跟随 */
 const STICKY_THRESHOLD = 40
+/** 首屏只渲染最近的这些消息，更早的按需加载（导入的大会话有上千条，全量渲染会冻住主线程） */
+const WINDOW_STEP = 40
 const EMPTY_VERSIONS: MessageVersions = { ids: [], index: -1 }
 
 export const MessageList = ({
@@ -49,6 +53,41 @@ export const MessageList = ({
   const scrollTopRef = useRef(0)
   const restoreScrollRef = useRef<{ messageId: string; top: number } | null>(null)
   const messages = getVisibleMessages(session)
+  const [windowSize, setWindowSize] = useState(WINDOW_STEP)
+  const restoreHeightRef = useRef<{ height: number; top: number } | null>(null)
+  // 切换会话时回到首屏窗口
+  useEffect(() => {
+    setWindowSize(WINDOW_STEP)
+  }, [session.id])
+  const startIndex = Math.max(0, messages.length - windowSize)
+  useEffect(() => {
+    if (messages.length > WINDOW_STEP) {
+      logInfo('view', '会话较大，只渲染最近的消息', {
+        sessionId: session.id,
+        messages: messages.length,
+        rendered: Math.min(messages.length, WINDOW_STEP),
+      })
+    }
+  }, [session.id, messages.length])
+  const shown = startIndex === 0 ? messages : messages.slice(startIndex)
+  const loadEarlier = useCallback(() => {
+    const el = scrollRef.current
+    if (el) {
+      restoreHeightRef.current = { height: el.scrollHeight, top: el.scrollTop }
+    }
+    stickyRef.current = false
+    setWindowSize((size) => size + WINDOW_STEP)
+  }, [])
+  // 补上更早的内容后保持阅读位置不跳
+  useLayoutEffect(() => {
+    const el = scrollRef.current
+    const pending = restoreHeightRef.current
+    if (el && pending) {
+      el.scrollTop = pending.top + (el.scrollHeight - pending.height)
+      scrollTopRef.current = el.scrollTop
+      restoreHeightRef.current = null
+    }
+  })
   const [previousVersions, setPreviousVersions] = useState(() =>
     buildMessageVersions(session, new Map())
   )
@@ -140,20 +179,27 @@ export const MessageList = ({
   }, [isMobile, scrollToBottom])
 
   const lastIndex = messages.length - 1
+  const t = useTranslate()
   const uploadRetryId = getUploadRetryId(messages, streaming)
   return (
     <ScrollToBottomContext.Provider value={scrollToBottom}>
       <div ref={isMobile ? undefined : scrollRef} className={styles.container}>
         <div ref={isMobile ? scrollRef : undefined} className={styles.scroll}>
           <div ref={contentRef} className={styles.column}>
-            {messages.map((message, index) =>
-              message.role === 'user' ? (
+            {startIndex > 0 ? (
+              <button type="button" className={styles.loadEarlier} onClick={loadEarlier}>
+                {t('messageListLoadEarlier', { count: Math.min(WINDOW_STEP, startIndex) })}
+              </button>
+            ) : null}
+            {shown.map((message, offset) => {
+              const index = startIndex + offset
+              return message.role === 'user' ? (
                 <UserMessage
                   key={message.id}
                   sessionId={session.id}
                   message={message}
                   retryUploadId={uploadRetryId}
-                  isFirst={index === 0}
+                  isFirst={index === 0 && startIndex === 0}
                   isLast={index === lastIndex || index === lastIndex - 1}
                   busy={streaming}
                   versions={versions.get(message.id) ?? EMPTY_VERSIONS}
@@ -171,7 +217,7 @@ export const MessageList = ({
                   onSelectVersion={selectVersion}
                 />
               )
-            )}
+            })}
           </div>
         </div>
         {footer}

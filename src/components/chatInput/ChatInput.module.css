@@ -330,3 +330,52 @@
     cursor: not-allowed;
   }
 }
+
+/* 斜杠命令面板：输入 / 时出现在输入框顶部，随输入过滤 */
+.commands {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 8px 6px;
+  border-bottom: 1px solid var(--dsw-alias-border-l2-darkmode-thin);
+  cursor: default;
+}
+
+.commandItem {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  box-sizing: border-box;
+  width: 100%;
+  padding: 6px 8px;
+  border: none;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--dsw-alias-label-primary);
+  font: inherit;
+  font-size: 14px;
+  line-height: 20px;
+  text-align: left;
+  cursor: pointer;
+  outline: none;
+
+  &:hover,
+  &:focus-visible {
+    background-color: var(--dsw-alias-interactive-bg-hover);
+  }
+}
+
+.commandName {
+  flex-shrink: 0;
+  font-weight: 500;
+  color: var(--dsw-alias-button-primary-fill);
+}
+
+.commandHint {
+  min-width: 0;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

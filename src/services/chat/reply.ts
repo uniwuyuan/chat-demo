@@ -284,6 +284,11 @@ const toAssistantParam = (
 }
 
 /** 历史中会进入请求上下文的轮次：提问后紧跟可用回答的才保留 */
+/**
+ * 附件策略：完整保留。缓存按「前缀完全一致」匹配，任何随轮次滚动的裁剪
+ * 都会让整段历史每轮重新计费；真正省钱的是一次性的 /compact，而不是滑动窗口。
+ */
+
 export const getContextRounds = (history: Message[]): [UserMessage, AssistantMessage][] => {
   const rounds: [UserMessage, AssistantMessage][] = []
   for (let i = 0; i + 1 < history.length; i++) {

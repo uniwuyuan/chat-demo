@@ -1,8 +1,16 @@
 import type { Message, Session } from './types.js'
 
 /** 将线性消息列表规范化为单分支，保留消息 ID、内容及时间。 */
+/**
+ * rootMessageId 为 null 只对「没有消息的会话」成立；一旦有消息却仍是 null，
+ * 说明是旧压缩逻辑写坏的会话，按线性列表修复而不是当成空会话（否则整段历史会看不见）。
+ */
+const isLinear = (session: Session) =>
+  session.rootMessageId === undefined ||
+  (session.rootMessageId === null && session.messages.length > 0)
+
 export const normalizeSession = (session: Session): Session =>
-  session.rootMessageId !== undefined
+  !isLinear(session)
     ? session
     : {
         ...session,
@@ -16,7 +24,7 @@ export const normalizeSession = (session: Session): Session =>
 
 /** 展示内容与请求上下文共用当前选中的分支路径。 */
 export const getVisibleMessages = (session: Session): Message[] => {
-  if (session.rootMessageId === undefined) {
+  if (isLinear(session)) {
     return session.messages
   }
   const byId = new Map(session.messages.map((message) => [message.id, message]))

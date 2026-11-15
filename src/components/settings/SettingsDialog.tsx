@@ -1,6 +1,7 @@
 import clsx from 'clsx'
 import { useRef, useState, type ReactNode } from 'react'
 import {
+  IconBrowseOutline16,
   IconDarkOutline16,
   IconDataOutline16,
   IconDownloadOutline16,
@@ -16,7 +17,7 @@ import {
   importHistory,
 } from '../../services/chat/backup.js'
 import { useIsMobile } from '../../app/viewport.js'
-import { useChatStore } from '../../services/chat/store.js'
+import { reloadSessions, useChatStore } from '../../services/chat/store.js'
 import { regionCodes, getRegionName, provinces } from '../../services/location.js'
 import {
   isChineseBrowser,
@@ -34,6 +35,10 @@ import { Select } from '../base/Select.js'
 import { showToast } from '../base/toastState.js'
 import { ApiKeyConfirm, ApiKeyField, useApiKeyEditor } from './ApiKeyField.js'
 import { closeSettings, useSettingsDialog, type SettingsSection } from './settingsDialogState.js'
+import { LogPanel } from './LogPanel.js'
+import { UsagePanel } from './UsagePanel.js'
+import { BackupPanel } from './BackupPanel.js'
+import { logError, logInfo, logWarn } from '../../services/debug/log.js'
 import styles from './Settings.module.css'
 
 /**
@@ -45,6 +50,26 @@ export const SettingsDialog = () => {
   return open ? <SettingsContent /> : null
 }
 
+/** 备份用的文件夹图标 */
+const BackupIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden>
+    <path
+      d="M2 4.5A1.5 1.5 0 0 1 3.5 3h2.3l1.2 1.6h5.5A1.5 1.5 0 0 1 14 6.1v5.4A1.5 1.5 0 0 1 12.5 13h-9A1.5 1.5 0 0 1 2 11.5v-7Z"
+      fill="currentColor"
+      opacity="0.9"
+    />
+  </svg>
+)
+
+/** 仪表盘用的柱状图标：不额外引入图标库 */
+const UsageIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden>
+    <rect x="2" y="8" width="3" height="6" rx="1" fill="currentColor" opacity="0.5" />
+    <rect x="6.5" y="5" width="3" height="9" rx="1" fill="currentColor" opacity="0.75" />
+    <rect x="11" y="2" width="3" height="12" rx="1" fill="currentColor" />
+  </svg>
+)
+
 const sections: { value: SettingsSection; label: TranslationKey; icon: ReactNode }[] = [
   {
     value: 'general',
@@ -52,6 +77,9 @@ const sections: { value: SettingsSection; label: TranslationKey; icon: ReactNode
     icon: <IconSettingsOutline16 />,
   },
   { value: 'data', label: 'settingDialogAsideDataOptionLabel', icon: <IconDataOutline16 /> },
+  { value: 'usage', label: 'usageSectionLabel', icon: <UsageIcon /> },
+  { value: 'backup', label: 'backupSectionLabel', icon: <BackupIcon /> },
+  { value: 'log', label: 'logSectionLabel', icon: <IconBrowseOutline16 /> },
 ]
 
 const SettingsContent = () => {
@@ -72,6 +100,19 @@ const SettingsContent = () => {
         closable
         className={styles.dialog}
         mainClassName={styles.dialogMain}
+        footer={
+          <div className={styles.credit}>
+            <span>{t('settingsCreditDeepSeek')}</span>
+            <a
+              className={styles.creditLink}
+              href="https://github.com/deepseek-ai/chat-demo"
+              target="_blank"
+              rel="noreferrer noopener"
+            >
+              {t('settingsCreditDeepSeekRepo')}
+            </a>
+          </div>
+        }
         onClose={() => {
           if (!historyDelete.busy) {
             closeSettings()
@@ -101,11 +142,12 @@ const SettingsContent = () => {
               <TtsVoiceSetting />
               <LocationSetting />
             </>
-          ) : (
+          ) : section === 'data' ? (
             <>
               <ApiKeyField editor={apiKeyEditor} />
               <ImportHistory historyImport={historyImport} disabled={historyBusy} />
               <ExportHistory disabled={historyBusy} />
+              <StorageCheck disabled={historyBusy} />
               <SettingCell
                 label={t('deleteAllSessions')}
                 status={null}
@@ -123,6 +165,12 @@ const SettingsContent = () => {
               />
               {isMobile ? <ApiKeyConfirm editor={apiKeyEditor} /> : null}
             </>
+          ) : section === 'usage' ? (
+            <UsagePanel />
+          ) : section === 'backup' ? (
+            <BackupPanel />
+          ) : (
+            <LogPanel />
           )}
         </div>
       </Modal>
@@ -331,7 +379,17 @@ const ImportConfirm = ({
           <Button variant="outlined" size="m" autoFocus onClick={historyImport.cancel}>
             {t('cancel')}
           </Button>
-          <Button variant="dangerOutlined" size="m" onClick={() => void historyImport.confirm()}>
+          <Button
+            variant="dangerOutlined"
+            size="m"
+            onClick={() => {
+              logInfo('import', '确认覆盖并开始导入', {
+                name: historyImport.file?.name ?? '',
+                size: historyImport.file?.size ?? 0,
+              })
+              void historyImport.confirm()
+            }}
+          >
             {t('historyImportConfirm')}
           </Button>
         </>
@@ -453,9 +511,12 @@ const useHistoryImport = () => {
     setStatus(null)
     try {
       const count = await importHistory(file)
+      logInfo('import', `导入完成，会话 ${count} 个`)
       setStatus({ key: count === 1 ? 'historyImportedOne' : 'historyImported', params: { count } })
-    } catch {
-      setStatus({ key: 'historyImportFailed', error: true })
+    } catch (error) {
+      // 保留真实原因：格式/版本/不完整，或底层异常信息，便于判断是包的问题还是环境问题
+      logError('import', '导入失败', error)
+      setStatus(errorStatus('historyImportFailed', error))
     } finally {
       importing.current = false
       setBusy(false)
@@ -488,7 +549,10 @@ const ImportHistory = ({
             size="m"
             className={clsx(styles.cellButton, styles.uploadButton)}
             disabled={disabled}
-            onClick={() => inputRef.current?.click()}
+            onClick={() => {
+              logInfo('import', '打开文件选择器')
+              inputRef.current?.click()
+            }}
           >
             <IconUploadOutline14 />
             {t('upload')}
@@ -502,11 +566,63 @@ const ImportHistory = ({
               const file = event.target.files?.[0]
               event.target.value = ''
               if (file) {
+                logInfo('import', '已选择文件', {
+                  name: file.name,
+                  size: file.size,
+                  type: file.type,
+                  modified: file.lastModified,
+                })
                 historyImport.select(file)
+              } else {
+                logWarn('import', '文件选择没有返回文件')
               }
             }}
           />
         </>
+      }
+    />
+  )
+}
+
+/**
+ * 存储自检：读出 IndexedDB 里各存储的条目数；
+ * 若「会话本体还在、索引丢了」，这一步会顺手重建索引，列表立刻恢复。
+ */
+const StorageCheck = ({ disabled }: { disabled: boolean }) => {
+  const t = useTranslate()
+  const [busy, setBusy] = useState(false)
+  const [status, setStatus] = useState<Status>(null)
+  return (
+    <SettingCell
+      label={t('storageCheck')}
+      description={t('storageCheckDescription')}
+      status={status}
+      action={
+        <Button
+          variant="outlined"
+          size="m"
+          className={styles.cellButton}
+          disabled={disabled || busy}
+          onClick={() => {
+            setBusy(true)
+            setStatus(null)
+            void reloadSessions()
+              .then((result) => {
+                setStatus({
+                  key: 'storageCheckDone',
+                  params: {
+                    sessions: result.sessions,
+                    summaries: result.summaries,
+                    files: result.files,
+                  },
+                })
+              })
+              .catch((error: unknown) => setStatus(errorStatus('storageCheckFailed', error)))
+              .finally(() => setBusy(false))
+          }}
+        >
+          {t('storageCheckAction')}
+        </Button>
       }
     />
   )

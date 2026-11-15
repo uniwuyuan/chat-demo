@@ -20,6 +20,10 @@ declare const styles: {
   readonly "right": string;
   readonly "sendButton": string;
   readonly "disabled": string;
+  readonly "commands": string;
+  readonly "commandItem": string;
+  readonly "commandName": string;
+  readonly "commandHint": string;
 };
 export = styles;
 

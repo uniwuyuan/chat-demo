@@ -1,0 +1,24 @@
+.ring {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 4px;
+  color: var(--dsw-alias-label-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+
+.text {
+  font-size: 11px;
+  line-height: 16px;
+  font-weight: 500;
+}
+
+@media not all and (min-width: 768px) {
+  .ring {
+    margin-left: 2px;
+  }
+
+  .text {
+    font-size: 12px;
+  }
+}

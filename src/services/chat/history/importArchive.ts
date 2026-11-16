@@ -6,12 +6,36 @@ import { checkManifest, readSessionFile, readSessionIndex } from './schema.js'
 import { toLocalSession } from './toLocal.js'
 import {
   ArchiveError,
+  fileSource,
+  isZipBytes,
   isZipFile,
+  memorySource,
   readArchive,
   readEntry,
   skipEntry,
   type ArchiveEntry,
+  type ArchiveSource,
 } from './zipReader.js'
+
+/**
+ * 打开归档字节来源。优先整体读入内存：WebView 里对 content:// 文件逐段 slice 的
+ * 单次开销很大，一百多个条目会累积成几十秒的“假死”。超大归档才退回流式读取。
+ */
+const MAX_MEMORY_BYTES = 64 * 1024 * 1024
+
+const openSource = async (file: File): Promise<ArchiveSource> => {
+  if (file.size > MAX_MEMORY_BYTES) {
+    if (!(await isZipFile(file))) {
+      fail('backupUnrecognized')
+    }
+    return fileSource(file)
+  }
+  const bytes = new Uint8Array(await file.arrayBuffer())
+  if (!isZipBytes(bytes)) {
+    fail('backupUnrecognized')
+  }
+  return memorySource(bytes)
+}
 
 /** 从原件字节补充图片 MIME；无法识别时为空字符串，图片身份仍由归档的 is_image 决定。 */
 const imageType = (bytes: Uint8Array): string => {
@@ -55,11 +79,8 @@ const readJson = async (entry: ArchiveEntry): Promise<unknown> => {
  * 校验失败时保留正在生成的回答和现有暂存数据。
  */
 export const checkArchiveFormat = async (file: File): Promise<void> => {
-  if (!(await isZipFile(file))) {
-    fail('backupUnrecognized')
-  }
   try {
-    for await (const entry of readArchive(file)) {
+    for await (const entry of readArchive(await openSource(file))) {
       if (entry.path !== MANIFEST_PATH) {
         fail('backupUnrecognized')
       }
@@ -79,14 +100,13 @@ export const checkArchiveFormat = async (file: File): Promise<void> => {
  * 写入导入暂存存储；调用方负责先清空暂存，成功后替换正式数据，失败时清理暂存。
  */
 export const importArchive = async (file: File): Promise<void> => {
-  if (!(await isZipFile(file))) {
-    fail('backupUnrecognized')
-  }
+  const source = await openSource(file)
   const imported = new Set<string>()
   const images = new Map<string, string>()
   /** 已保存的原件：文件 ID → MIME。同一图片出现在多个会话目录时只保存一次。 */
   const stored = new Map<string, string>()
   let manifest = false
+  let entryCount = 0
   let index: SessionIndexEntry[] | undefined
   let currentSessionId: string | undefined
 
@@ -102,8 +122,11 @@ export const importArchive = async (file: File): Promise<void> => {
   }
 
   try {
-    for await (const entry of readArchive(file)) {
+    for await (const entry of readArchive(source)) {
       const { path } = entry
+      entryCount += 1
+      if (entryCount % 25 === 0) {
+      }
       const sessionId = parseSessionPath(path)
       if (!manifest) {
         if (path !== MANIFEST_PATH) {

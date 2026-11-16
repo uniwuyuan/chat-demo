@@ -169,4 +169,6 @@ export const zh = {
   latestReminderLanguage: '中文',
   settingsLocaleZhCN: '简体中文',
   settingsLocaleEnUS: 'English',
+  settingsCreditDeepSeek: '致谢 DeepSeek 的开源',
+  settingsCreditDeepSeekRepo: 'deepseek-ai/chat-demo',
 } as const

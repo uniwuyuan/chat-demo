@@ -178,4 +178,6 @@ export const en = {
   latestReminderLanguage: 'English',
   settingsLocaleZhCN: 'Simplified Chinese',
   settingsLocaleEnUS: 'English',
+  settingsCreditDeepSeek: 'Thanks to DeepSeek for open-sourcing',
+  settingsCreditDeepSeekRepo: 'deepseek-ai/chat-demo',
 } satisfies Record<keyof typeof zh, string>

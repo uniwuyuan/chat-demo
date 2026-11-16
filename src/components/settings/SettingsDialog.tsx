@@ -72,6 +72,19 @@ const SettingsContent = () => {
         closable
         className={styles.dialog}
         mainClassName={styles.dialogMain}
+        footer={
+          <div className={styles.credit}>
+            <span>{t('settingsCreditDeepSeek')}</span>
+            <a
+              className={styles.creditLink}
+              href="https://github.com/deepseek-ai/chat-demo"
+              target="_blank"
+              rel="noreferrer noopener"
+            >
+              {t('settingsCreditDeepSeekRepo')}
+            </a>
+          </div>
+        }
         onClose={() => {
           if (!historyDelete.busy) {
             closeSettings()

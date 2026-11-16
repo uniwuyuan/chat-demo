@@ -169,4 +169,5 @@ export const zh = {
   latestReminderLanguage: '中文',
   settingsLocaleZhCN: '简体中文',
   settingsLocaleEnUS: 'English',
+  messageListLoadEarlier: '载入更早的 {count} 条',
 } as const

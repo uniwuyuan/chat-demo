@@ -35,3 +35,21 @@
   margin: 0 auto;
   padding-bottom: 24px;
 }
+
+/* 大会话的“载入更早”按钮 */
+.loadEarlier {
+  align-self: center;
+  margin: 4px auto 12px;
+  padding: 4px 14px;
+  border: 1px solid var(--dsw-alias-border-inverted);
+  border-radius: 100px;
+  background: transparent;
+  color: var(--dsw-alias-label-tertiary);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.loadEarlier:hover {
+  color: var(--dsw-alias-label-primary);
+}

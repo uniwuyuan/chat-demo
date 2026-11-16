@@ -65,8 +65,15 @@ export const ReplyArea = memo(function ReplyArea({
   hasResponse: boolean
 }) {
   useTranslate()
-  const [open, setOpen] = useState(true)
   const titleActive = streaming && !hasResponse
+  // 思考默认折叠：历史消息只留一行「已思考 N 秒」，点开才渲染内部步骤，
+  // 既省下大量 Markdown 解析，也让正文成为视线焦点。正在思考时自动展开。
+  const [open, setOpen] = useState(titleActive)
+  useEffect(() => {
+    if (titleActive) {
+      setOpen(true)
+    }
+  }, [titleActive])
   useTicker(titleActive, 1000)
   if (view.steps.length === 0 && !(message.thinking && streaming)) {
     return null

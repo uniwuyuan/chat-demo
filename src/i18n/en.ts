@@ -178,4 +178,5 @@ export const en = {
   latestReminderLanguage: 'English',
   settingsLocaleZhCN: 'Simplified Chinese',
   settingsLocaleEnUS: 'English',
+  messageListLoadEarlier: 'Load {count} earlier messages',
 } satisfies Record<keyof typeof zh, string>

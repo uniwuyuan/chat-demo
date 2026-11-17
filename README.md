@@ -73,3 +73,12 @@ src/
 ## License
 
 [MIT](LICENSE). The build copies the license to `dist/LICENSE`; include it when distributing the app. Third-party dependencies are subject to their own licenses.
+
+## Contributors
+
+| Member | Role | Scope |
+|---|---|---|
+| [@uniwuyuan](https://github.com/uniwuyuan) | Maintainer / Developer | Repository maintenance, secondary development, build & release, APK packaging |
+| **Ruo** (若) | Testing / required dev steps | Feature acceptance, regression testing, edge-case and failure-path verification; executing the required development steps (build verification, pre-release checks) |
+
+See [CONTRIBUTORS.md](CONTRIBUTORS.md) for the full list.

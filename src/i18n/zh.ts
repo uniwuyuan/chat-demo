@@ -171,6 +171,7 @@ export const zh = {
   settingsLocaleEnUS: 'English',
   settingsCreditDeepSeek: '致谢 DeepSeek 的开源',
   settingsCreditDeepSeekRepo: 'deepseek-ai/chat-demo',
+  settingsCreditRuo: '致谢 若（测试与开发必要工序）',
   commandCompactLabel: '压缩上下文',
   commandCompactHint: '较早的历史压成摘要，保留最近对话',
   commandNewLabel: '开启新对话',

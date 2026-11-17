@@ -180,6 +180,7 @@ export const en = {
   settingsLocaleEnUS: 'English',
   settingsCreditDeepSeek: 'Thanks to DeepSeek for open-sourcing',
   settingsCreditDeepSeekRepo: 'deepseek-ai/chat-demo',
+  settingsCreditRuo: 'Thanks to Ruo for testing and the required development steps',
   commandCompactLabel: 'Compact context',
   commandCompactHint: 'Summarize older history and keep the recent turns',
   commandNewLabel: 'New chat',

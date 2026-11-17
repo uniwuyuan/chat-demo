@@ -101,16 +101,21 @@ const SettingsContent = () => {
         className={styles.dialog}
         mainClassName={styles.dialogMain}
         footer={
-          <div className={styles.credit}>
-            <span>{t('settingsCreditDeepSeek')}</span>
-            <a
-              className={styles.creditLink}
-              href="https://github.com/deepseek-ai/chat-demo"
-              target="_blank"
-              rel="noreferrer noopener"
-            >
-              {t('settingsCreditDeepSeekRepo')}
-            </a>
+          <div className={styles.creditBlock}>
+            <div className={styles.credit}>
+              <span>{t('settingsCreditDeepSeek')}</span>
+              <a
+                className={styles.creditLink}
+                href="https://github.com/deepseek-ai/chat-demo"
+                target="_blank"
+                rel="noreferrer noopener"
+              >
+                {t('settingsCreditDeepSeekRepo')}
+              </a>
+            </div>
+            <div className={styles.credit}>
+              <span>{t('settingsCreditRuo')}</span>
+            </div>
           </div>
         }
         onClose={() => {

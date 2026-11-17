@@ -203,6 +203,8 @@ export const zh = {
   logSearch: '搜索来源或内容',
   logCopied: '日志已复制',
   logCopyFailed: '复制失败，改用导出',
+  logHintWhere: '详细日志见 设置 → 日志（可复制/导出）',
+  logSnapshot: '附上最近日志',
   logCleared: '日志已清空',
   storageCheck: '存储自检',
   storageCheckDescription: '读取本地会话数、索引数与附件数；索引丢失时会自动重建。',

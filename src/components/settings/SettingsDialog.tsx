@@ -28,7 +28,13 @@ import {
   useSettings,
   type ThemePreference,
 } from '../../services/settings.js'
-import { useTranslate, type TranslationKey, type TranslationMessage } from '../../i18n/index.js'
+import {
+  translate,
+  useTranslate,
+  type TranslationKey,
+  type TranslationMessage,
+} from '../../i18n/index.js'
+import { logError, logSnapshot } from '../../services/debug/log.js'
 import { Button } from '../base/Button.js'
 import { Modal } from '../base/Modal.js'
 import { Select } from '../base/Select.js'
@@ -462,9 +468,14 @@ type Status = (TranslationMessage & { error?: boolean; reason?: TranslationKey }
 /** 导出失败附带原因：预期的错误用对应文案作原因，其他错误用错误信息。 */
 const errorStatus = (key: TranslationKey, error: unknown): Status => ({
   key,
+  // 错误信息后面带上日志位置：只给一句“数据损坏”没法排查
   ...(error instanceof BackupError
     ? { reason: error.key }
-    : { params: { message: error instanceof Error ? error.message : String(error) } }),
+    : {
+        params: {
+          message: `${error instanceof Error ? error.message : String(error)} · ${translate('logHintWhere')}`,
+        },
+      }),
   error: true,
 })
 
@@ -521,6 +532,8 @@ const useHistoryImport = () => {
     } catch (error) {
       // 保留真实原因：格式/版本/不完整，或底层异常信息，便于判断是包的问题还是环境问题
       logError('import', '导入失败', error)
+      // 把失败现场一并落进日志：最近 60 行 + 错误对象，导出后就能直接定位
+      logError('import', '失败现场快照', logSnapshot(60))
       setStatus(errorStatus('historyImportFailed', error))
     } finally {
       importing.current = false

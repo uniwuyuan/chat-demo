@@ -212,6 +212,8 @@ export const en = {
   logSearch: 'Search scope or message',
   logCopied: 'Log copied',
   logCopyFailed: 'Copy failed, use export',
+  logHintWhere: 'see Settings → Logs for the full log (copy / export)',
+  logSnapshot: 'Attach recent logs',
   logCleared: 'Log cleared',
   storageCheck: 'Storage check',
   storageCheckDescription: 'Counts local chats, index entries and files; rebuilds the index if it is missing.',
